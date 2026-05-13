@@ -10,21 +10,25 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 const TEMPLATES = path.join(__dirname, 'templates');
 const FILLER = path.join(__dirname, 'fill_pdfs.py');
 
+app.use((req, res, next) => {
+  res.setTimeout(120000);
+  next();
+});
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Convert PDF to base64 images for Claude Vision
 app.post('/api/extract', upload.single('pdf'), async (req, res) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deed-'));
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const pdfPath = path.join(tmpDir, 'deed.pdf');
     fs.writeFileSync(pdfPath, req.file.buffer);
-    execSync(`pdftoppm -r 200 -jpeg "${pdfPath}" "${path.join(tmpDir, 'page')}"`, { timeout: 30000 });
+    execSync(`pdftoppm -r 150 -jpeg "${pdfPath}" "${path.join(tmpDir, 'page')}"`, { timeout: 30000 });
     const images = fs.readdirSync(tmpDir)
       .filter(f => f.startsWith('page') && f.endsWith('.jpg'))
       .sort()
-      .slice(0, 4)
+      .slice(0, 2)
       .map(f => fs.readFileSync(path.join(tmpDir, f)).toString('base64'));
     if (images.length === 0) return res.status(400).json({ error: 'Could not convert PDF' });
     res.json({ images });
@@ -40,21 +44,16 @@ function runFiller(cmd, data, outExt, res, filenamePrefix) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), cmd + '-'));
   try {
     const outPath = path.join(tmpDir, 'output.' + outExt);
-    console.log(`Running filler: ${cmd} -> ${outPath}`);
+    console.log(`Running filler: ${cmd}`);
     const result = execFileSync('python3', [FILLER, cmd, JSON.stringify(data), TEMPLATES, outPath], {
-      timeout: 30000,
+      timeout: 60000,
       encoding: 'utf8'
     });
-    console.log(`Filler output: ${result}`);
-
-    if (!fs.existsSync(outPath)) {
-      throw new Error(`Output file not created: ${outPath}`);
-    }
-
+    console.log(`Filler done: ${cmd}`);
+    if (!fs.existsSync(outPath)) throw new Error(`Output file not created`);
     const buf = fs.readFileSync(outPath);
     const safe = (data.grantor || 'deed').replace(/[^A-Za-z0-9]/g, '_').substring(0, 20);
     const date = new Date().toISOString().split('T')[0];
-
     if (outExt === 'pdf') {
       res.setHeader('Content-Type', 'application/pdf');
     } else {
@@ -75,9 +74,10 @@ app.post('/api/fill-affidavit', (req, res) => runFiller('affidavit', req.body, '
 app.post('/api/fill-residency', (req, res) => runFiller('residency', req.body, 'pdf', res, 'Sellers_Residency'));
 app.post('/api/fill-deed',      (req, res) => runFiller('deed',      req.body, 'docx', res, 'Deed'));
 
-// Proxy Claude API
 app.post('/api/claude', async (req, res) => {
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90000);
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -85,8 +85,10 @@ app.post('/api/claude', async (req, res) => {
         'x-api-key': process.env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify(req.body),
+      signal: controller.signal
     });
+    clearTimeout(timeout);
     const data = await response.json();
     res.json(data);
   } catch (err) {
@@ -96,4 +98,5 @@ app.post('/api/claude', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Deed Processor running on port ${PORT}`));
+const server = app.listen(PORT, () => console.log(`Deed Processor running on port ${PORT}`));
+server.timeout = 120000;
