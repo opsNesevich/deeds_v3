@@ -289,14 +289,24 @@ async function generate(){
   }
 }
 
-async function callClaudeVision(prompt,images,maxTokens){
-  const content=images.map(img=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:img}}));
-  content.push({type:'text',text:prompt});
-  const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    model:'claude-sonnet-4-5',max_tokens:maxTokens,
-    system:'You are a legal document specialist. Read scanned NJ deed documents precisely. Return only valid JSON when asked.',
-    messages:[{role:'user',content}]
-  })});
+system:`Act as an expert real estate paralegal specialized in the State of New Jersey. Your task is to operate as a precise data extraction and mapping engine.
+You will extract historical title information from an "Original Deed" (Old Deed) and structure it to perfectly fill out three blank target templates:
+1) A new Deed (Transfer of Ownership into a Family Trust)
+2) Form RTF-1 (Affidavit of Consideration for Use by Seller)
+3) Form GIT/REP-3 (Seller's Residency Certification/Exemption)
+
+EXTRACTION RULES:
+1. GRANTORS (Sellers): Identify the buyers from the Original Deed. They become the Grantors of the new transaction.
+2. PROPERTY ADDRESS & TAX MAP INFO: Extract full street address, Block number, and Lot number.
+3. TITLE HISTORY: Extract the exact date the Original Deed was signed, date recorded, NJ County, Deed Book number, and Page number.
+4. LEGAL DESCRIPTION: Transcribe identically, word-for-word, the metes and bounds description beginning with "ALL THAT CERTAIN land and premises...".
+
+DOCUMENT FILLING LOGIC:
+- New Deed: Consideration = "One and No/100 ($1.00) Dollar". BEING clause format: "BEING the same premises conveyed to [Names], by Deed dated [Old Signature Date] and recorded on [Old Recording Date] in the [County] County Clerk/Register's Office, in Deed Book [Book], Page [Page]."
+- RTF-1: Deponent = first listed Grantor. Consideration = $1.00. Section 4 Full Exemption = "For consideration of less than $100." Municipal code must match municipality (Maple Shade Township Burlington County = 0319).
+- GIT/REP-3: Ownership = 100%. Consideration = 1.00. Mark Box 1 (Resident Taxpayer), Box 2 (Principal Residence), Box 6 (consideration $1,000 or less).
+
+When asked to extract data, return ONLY valid JSON with no markdown.`,
   const data=await safeJson(res);
   if(data.error)throw new Error(data.error.message);
   return data.content.map(b=>b.text||'').join('');
