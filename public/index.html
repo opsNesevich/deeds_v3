@@ -94,7 +94,7 @@ header{background:var(--ink);padding:0 40px;display:flex;align-items:center;just
 <div class="main">
   <div id="uploadSection">
     <div class="upload-card" id="dz" ondragover="dzOver(event)" ondragleave="dzLeave()" ondrop="dzDrop(event)">
-     <input type="file" id="fileIn" accept=".pdf,application/pdf" onchange="handleFile(this.files[0])"/>
+      <input type="file" id="fileIn" accept=".pdf,application/pdf" onchange="handleFile(this.files[0])"/>
       <div class="upload-icon">📄</div>
       <div class="upload-title">Drop the Original Deed PDF here</div>
       <div class="upload-sub">Claude reads the scanned deed and fills the official NJ forms automatically<br>PDF only — minimal data entry required</div>
@@ -201,7 +201,12 @@ function dzOver(e){e.preventDefault();dz.classList.add('over')}
 function dzLeave(){dz.classList.remove('over')}
 function dzDrop(e){e.preventDefault();dz.classList.remove('over');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0])}
 function handleFile(f){
-  if(!f.name.toLowerCase().endsWith('.pdf') && f.type !== 'application/pdf'){showError('Please upload a PDF file.');return}
+  if(!f.name.toLowerCase().endsWith('.pdf')&&f.type!=='application/pdf'){showError('Please upload a PDF file.');return}
+  pdfFile=f;dz.style.display='none';
+  const fc=document.getElementById('fileChip');fc.style.display='flex';
+  document.getElementById('chipName').textContent=f.name;
+  document.getElementById('genBtn').disabled=false;hideError();
+}
 function fmtDate(s){if(!s)return '';const d=new Date(s+'T12:00:00');return d.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
 function v(id){const e=document.getElementById(id);return e?e.value.trim():''}
 
@@ -284,24 +289,14 @@ async function generate(){
   }
 }
 
-system:`Act as an expert real estate paralegal specialized in the State of New Jersey. Your task is to operate as a precise data extraction and mapping engine.
-You will extract historical title information from an "Original Deed" (Old Deed) and structure it to perfectly fill out three blank target templates:
-1) A new Deed (Transfer of Ownership into a Family Trust)
-2) Form RTF-1 (Affidavit of Consideration for Use by Seller)
-3) Form GIT/REP-3 (Seller's Residency Certification/Exemption)
-
-EXTRACTION RULES:
-1. GRANTORS (Sellers): Identify the buyers from the Original Deed. They become the Grantors of the new transaction.
-2. PROPERTY ADDRESS & TAX MAP INFO: Extract full street address, Block number, and Lot number.
-3. TITLE HISTORY: Extract the exact date the Original Deed was signed, date recorded, NJ County, Deed Book number, and Page number.
-4. LEGAL DESCRIPTION: Transcribe identically, word-for-word, the metes and bounds description beginning with "ALL THAT CERTAIN land and premises...".
-
-DOCUMENT FILLING LOGIC:
-- New Deed: Consideration = "One and No/100 ($1.00) Dollar". BEING clause format: "BEING the same premises conveyed to [Names], by Deed dated [Old Signature Date] and recorded on [Old Recording Date] in the [County] County Clerk/Register's Office, in Deed Book [Book], Page [Page]."
-- RTF-1: Deponent = first listed Grantor. Consideration = $1.00. Section 4 Full Exemption = "For consideration of less than $100." Municipal code must match municipality (Maple Shade Township Burlington County = 0319).
-- GIT/REP-3: Ownership = 100%. Consideration = 1.00. Mark Box 1 (Resident Taxpayer), Box 2 (Principal Residence), Box 6 (consideration $1,000 or less).
-
-When asked to extract data, return ONLY valid JSON with no markdown.`,
+async function callClaudeVision(prompt,images,maxTokens){
+  const content=images.map(img=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:img}}));
+  content.push({type:'text',text:prompt});
+  const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    model:'claude-sonnet-4-5',max_tokens:maxTokens,
+    system:'Act as an expert real estate paralegal specialized in the State of New Jersey. Your task is to operate as a precise data extraction and mapping engine. Extract historical title information from the Original Deed image provided. EXTRACTION RULES: 1. GRANTORS: Identify the buyers from the Original Deed - they become the Grantors of the new transaction. 2. PROPERTY: Extract full street address, Block number, and Lot number. 3. TITLE HISTORY: Extract deed signing date, recording date, NJ County, Deed Book number, and Page number. 4. LEGAL DESCRIPTION: Transcribe identically word-for-word the metes and bounds description beginning with ALL THAT CERTAIN. DOCUMENT FILLING LOGIC: New Deed consideration = One and No/100 ($1.00) Dollar. BEING clause = BEING the same premises conveyed to [Names], by Deed dated [Old Signature Date] and recorded on [Old Recording Date] in the [County] County Clerk Register Office, in Deed Book [Book], Page [Page]. RTF-1: Deponent = first listed Grantor, Consideration = $1.00, Full Exemption reason = For consideration of less than $100, match municipality to 4-digit NJ municipal code. GIT/REP-3: Ownership = 100%, Consideration = 1.00, mark Box 1 Resident Taxpayer Box 2 Principal Residence Box 6 consideration 1000 or less. When asked to extract data return ONLY valid JSON with no markdown.',
+    messages:[{role:'user',content}]
+  })});
   const data=await safeJson(res);
   if(data.error)throw new Error(data.error.message);
   return data.content.map(b=>b.text||'').join('');
