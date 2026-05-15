@@ -94,7 +94,7 @@ header{background:var(--ink);padding:0 40px;display:flex;align-items:center;just
 <div class="main">
   <div id="uploadSection">
     <div class="upload-card" id="dz" ondragover="dzOver(event)" ondragleave="dzLeave()" ondrop="dzDrop(event)">
-      <input type="file" id="fileIn" accept=".pdf" onchange="handleFile(this.files[0])"/>
+     <input type="file" id="fileIn" accept=".pdf,application/pdf" onchange="handleFile(this.files[0])"/>
       <div class="upload-icon">📄</div>
       <div class="upload-title">Drop the Original Deed PDF here</div>
       <div class="upload-sub">Claude reads the scanned deed and fills the official NJ forms automatically<br>PDF only — minimal data entry required</div>
