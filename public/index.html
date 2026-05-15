@@ -201,12 +201,7 @@ function dzOver(e){e.preventDefault();dz.classList.add('over')}
 function dzLeave(){dz.classList.remove('over')}
 function dzDrop(e){e.preventDefault();dz.classList.remove('over');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0])}
 function handleFile(f){
-  if(!f.name.toLowerCase().endsWith('.pdf')){showError('Please upload a PDF file.');return}
-  pdfFile=f;dz.style.display='none';
-  const fc=document.getElementById('fileChip');fc.style.display='flex';
-  document.getElementById('chipName').textContent=f.name;
-  document.getElementById('genBtn').disabled=false;hideError();
-}
+  if(!f.name.toLowerCase().endsWith('.pdf') && f.type !== 'application/pdf'){showError('Please upload a PDF file.');return}
 function fmtDate(s){if(!s)return '';const d=new Date(s+'T12:00:00');return d.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
 function v(id){const e=document.getElementById(id);return e?e.value.trim():''}
 
